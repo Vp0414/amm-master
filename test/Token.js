@@ -22,7 +22,7 @@ describe('Token', () => {
 
   describe('Deployment', () => {
     const name = 'Dapp University'
-    const symbol = 'DAPP'
+    const symbol = 'MTC'
     const decimals = '18'
     const totalSupply = tokens('1000000')
 

@@ -52,7 +52,7 @@ const Swap = () => {
       return
     }
 
-    if (inputToken === 'DAPP') {
+    if (inputToken === 'MTC') {
       setInputAmount(e.target.value)
 
       const _token1Amount = ethers.utils.parseUnits(e.target.value, 'ether')
@@ -86,7 +86,7 @@ const Swap = () => {
     const _inputAmount = ethers.utils.parseUnits(inputAmount, 'ether')
 
     // Swap token depending upon which one we're doing...
-    if (inputToken === "DAPP") {
+    if (inputToken === "MTC") {
       await swap(provider, amm, tokens[0], inputToken, _inputAmount, dispatch)
     } else {
       await swap(provider, amm, tokens[1], inputToken, _inputAmount, dispatch)
@@ -105,7 +105,7 @@ const Swap = () => {
       return
     }
 
-    if (inputToken === 'DAPP') {
+    if (inputToken === 'MTC') {
       setPrice(await amm.token2Balance() / await amm.token1Balance())
     } else {
       setPrice(await amm.token1Balance() / await amm.token2Balance())
