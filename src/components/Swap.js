@@ -11,39 +11,33 @@ import Spinner from 'react-bootstrap/Spinner';
 import { ethers } from 'ethers'
 
 import Alert from './Alert'
-
-import {
-  swap,
-  loadBalances
-} from '../store/interactions'
+import { swap, loadBalances } from '../store/interactions'
 
 const Swap = () => {
   const [inputToken, setInputToken] = useState(null)
   const [outputToken, setOutputToken] = useState(null)
   const [inputAmount, setInputAmount] = useState(0)
   const [outputAmount, setOutputAmount] = useState(0)
-
   const [price, setPrice] = useState(0)
-
   const [showAlert, setShowAlert] = useState(false)
 
-  const provider = useSelector(state => state.provider.connection)
-  const account = useSelector(state => state.provider.account)
+  const provider = useSelector(state => state.provider?.connection)
+  const account = useSelector(state => state.provider?.account)
 
-  const tokens = useSelector(state => state.tokens.contracts)
-  const symbols = useSelector(state => state.tokens.symbols)
-  const balances = useSelector(state => state.tokens.balances)
+  const tokens = useSelector(state => state.tokens?.contracts || [])   // safe default
+  const symbols = useSelector(state => state.tokens?.symbols || [])    // safe default
+  const balances = useSelector(state => state.tokens?.balances || [0,0])// safe default
 
-  const amm = useSelector(state => state.amm.contract)
-  const isSwapping = useSelector(state => state.amm.swapping.isSwapping)
-  const isSuccess = useSelector(state => state.amm.swapping.isSuccess)
-  const transactionHash = useSelector(state => state.amm.swapping.transactionHash)
+  const amm = useSelector(state => state.amm?.contract)                // optional chaining
+  const isSwapping = useSelector(state => state.amm?.swapping?.isSwapping)
+  const isSuccess = useSelector(state => state.amm?.swapping?.isSuccess)
+  const transactionHash = useSelector(state => state.amm?.swapping?.transactionHash)
 
   const dispatch = useDispatch()
 
   const inputHandler = async (e) => {
-    if (!inputToken || !outputToken) {
-      window.alert('Please select token')
+    if (!inputToken || !outputToken || !amm) {
+      window.alert('Please select token and ensure AMM is loaded')
       return
     }
 
@@ -52,31 +46,32 @@ const Swap = () => {
       return
     }
 
-    if (inputToken === 'MTC') {
-      setInputAmount(e.target.value)
+    setInputAmount(e.target.value)
 
-      const _token1Amount = ethers.utils.parseUnits(e.target.value, 'ether')
-      const result = await amm.calculateToken1Swap(_token1Amount)
-      const _token2Amount = ethers.utils.formatUnits(result.toString(), 'ether')
-
-      setOutputAmount(_token2Amount.toString())
-
-    } else {
-      setInputAmount(e.target.value)
-
-      const _token2Amount = ethers.utils.parseUnits(e.target.value, 'ether')
-      const result = await amm.calculateToken2Swap(_token2Amount)
-      const _token1Amount = ethers.utils.formatUnits(result.toString(), 'ether')
-
-      setOutputAmount(_token1Amount.toString())
+    try {
+      if (inputToken === 'DAPP') {
+        const _token1Amount = ethers.utils.parseUnits(e.target.value, 'ether')
+        const result = await amm.calculateToken1Swap(_token1Amount)
+        setOutputAmount(ethers.utils.formatUnits(result.toString(), 'ether'))
+      } else {
+        const _token2Amount = ethers.utils.parseUnits(e.target.value, 'ether')
+        const result = await amm.calculateToken2Swap(_token2Amount)
+        setOutputAmount(ethers.utils.formatUnits(result.toString(), 'ether'))
+      }
+    } catch (err) {
+      console.error('Error calculating swap:', err)
+      setOutputAmount(0)
     }
-
   }
 
   const swapHandler = async (e) => {
     e.preventDefault()
-
     setShowAlert(false)
+
+    if (!amm || tokens.length === 0 || !account) {
+      window.alert('Contracts or account not loaded yet')
+      return
+    }
 
     if (inputToken === outputToken) {
       window.alert('Invalid Token Pair')
@@ -85,37 +80,42 @@ const Swap = () => {
 
     const _inputAmount = ethers.utils.parseUnits(inputAmount, 'ether')
 
-    // Swap token depending upon which one we're doing...
-    if (inputToken === "MTC") {
-      await swap(provider, amm, tokens[0], inputToken, _inputAmount, dispatch)
-    } else {
-      await swap(provider, amm, tokens[1], inputToken, _inputAmount, dispatch)
+    try {
+      if (inputToken === "DAPP") {
+        await swap(provider, amm, tokens[0], inputToken, _inputAmount, dispatch)
+      } else {
+        await swap(provider, amm, tokens[1], inputToken, _inputAmount, dispatch)
+      }
+
+      await loadBalances(amm, tokens, account, dispatch)
+      await getPrice()
+      setShowAlert(true)
+    } catch (err) {
+      console.error('Swap failed:', err)
+      setShowAlert(true)
     }
-
-    await loadBalances(amm, tokens, account, dispatch)
-    await getPrice()
-
-    setShowAlert(true)
-
   }
 
   const getPrice = async () => {
-    if (inputToken === outputToken) {
+    if (!amm || inputToken === outputToken) {
       setPrice(0)
       return
     }
 
-    if (inputToken === 'MTC') {
-      setPrice(await amm.token2Balance() / await amm.token1Balance())
-    } else {
-      setPrice(await amm.token1Balance() / await amm.token2Balance())
+    try {
+      if (inputToken === 'DAPP') {
+        setPrice(await amm.token2Balance() / await amm.token1Balance())
+      } else {
+        setPrice(await amm.token1Balance() / await amm.token2Balance())
+      }
+    } catch (err) {
+      console.error('Error fetching price:', err)
+      setPrice(0)
     }
   }
 
   useEffect(() => {
-    if(inputToken && outputToken) {
-      getPrice()
-    }
+    if (inputToken && outputToken) getPrice()
   }, [inputToken, outputToken]);
 
   return (
@@ -123,17 +123,14 @@ const Swap = () => {
       <Card style={{ maxWidth: '450px' }} className='mx-auto px-4'>
         {account ? (
           <Form onSubmit={swapHandler} style={{ maxWidth: '450px', margin: '50px auto' }}>
-
+            {/* Input Section */}
             <Row className='my-3'>
               <div className='d-flex justify-content-between'>
                 <Form.Label><strong>Input:</strong></Form.Label>
                 <Form.Text muted>
                   Balance: {
-                    inputToken === symbols[0] ? (
-                      balances[0]
-                    ) : inputToken === symbols[1] ? (
-                      balances[1]
-                    ) : 0
+                    inputToken === symbols[0] ? balances[0] :
+                    inputToken === symbols[1] ? balances[1] : 0
                   }
                 </Form.Text>
               </div>
@@ -143,29 +140,27 @@ const Swap = () => {
                   placeholder="0.0"
                   min="0.0"
                   step="any"
-                  onChange={(e) => inputHandler(e) }
-                  disabled={!inputToken}
+                  onChange={inputHandler}
+                  disabled={!inputToken || !amm}
                 />
                 <DropdownButton
                   variant="outline-secondary"
                   title={inputToken ? inputToken : "Select Token"}
                 >
-                  <Dropdown.Item onClick={(e) => setInputToken(e.target.innerHTML)} >DAPP</Dropdown.Item>
-                  <Dropdown.Item onClick={(e) => setInputToken(e.target.innerHTML)} >USD</Dropdown.Item>
+                  <Dropdown.Item onClick={(e) => setInputToken(e.target.innerHTML)}>DAPP</Dropdown.Item>
+                  <Dropdown.Item onClick={(e) => setInputToken(e.target.innerHTML)}>USD</Dropdown.Item>
                 </DropdownButton>
               </InputGroup>
             </Row>
 
+            {/* Output Section */}
             <Row className='my-4'>
               <div className='d-flex justify-content-between'>
                 <Form.Label><strong>Output:</strong></Form.Label>
                 <Form.Text muted>
                   Balance: {
-                    outputToken === symbols[0] ? (
-                      balances[0]
-                    ) : outputToken === symbols[1] ? (
-                      balances[1]
-                    ) : 0
+                    outputToken === symbols[0] ? balances[0] :
+                    outputToken === symbols[1] ? balances[1] : 0
                   }
                 </Form.Text>
               </div>
@@ -186,57 +181,33 @@ const Swap = () => {
               </InputGroup>
             </Row>
 
+            {/* Swap Button & Price */}
             <Row className='my-3'>
               {isSwapping ? (
                 <Spinner animation="border" style={{ display: 'block', margin: '0 auto' }} />
-              ): (
+              ) : (
                 <Button type='submit'>Swap</Button>
               )}
-
-              <Form.Text muted>
-                Exchange Rate: {price}
-              </Form.Text>
+              <Form.Text muted>Exchange Rate: {price}</Form.Text>
             </Row>
-
           </Form>
-
         ) : (
-          <p
-            className='d-flex justify-content-center align-items-center'
-            style={{ height: '300px' }}
-          >
+          <p className='d-flex justify-content-center align-items-center' style={{ height: '300px' }}>
             Please connect wallet.
           </p>
         )}
       </Card>
 
+      {/* Alert */}
       {isSwapping ? (
-        <Alert
-          message={'Swap Pending...'}
-          transactionHash={null}
-          variant={'info'}
-          setShowAlert={setShowAlert}
-        />
+        <Alert message={'Swap Pending...'} transactionHash={null} variant={'info'} setShowAlert={setShowAlert} />
       ) : isSuccess && showAlert ? (
-        <Alert
-          message={'Swap Successful'}
-          transactionHash={transactionHash}
-          variant={'success'}
-          setShowAlert={setShowAlert}
-        />
+        <Alert message={'Swap Successful'} transactionHash={transactionHash} variant={'success'} setShowAlert={setShowAlert} />
       ) : !isSuccess && showAlert ? (
-        <Alert
-          message={'Swap Failed'}
-          transactionHash={null}
-          variant={'danger'}
-          setShowAlert={setShowAlert}
-        />
-      ) : (
-        <></>
-      )}
-
+        <Alert message={'Swap Failed'} transactionHash={null} variant={'danger'} setShowAlert={setShowAlert} />
+      ) : null}
     </div>
-  );
+  )
 }
 
-export default Swap;
+export default Swap

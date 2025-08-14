@@ -5,29 +5,36 @@ import Button from 'react-bootstrap/Button'
 import Blockies from 'react-blockies'
 
 import logo from '../logo.png';
-
 import { loadAccount, loadBalances } from '../store/interactions'
-
 import config from '../config.json'
 
 const Navigation = () => {
-  const chainId = useSelector(state => state.provider.chainId)
-  const account = useSelector(state => state.provider.account)
-  const tokens = useSelector(state => state.tokens.contracts)
-  const amm = useSelector(state => state.amm.contract)
+  const chainId = useSelector(state => state.provider?.chainId)
+  const account = useSelector(state => state.provider?.account)
+  const tokens = useSelector(state => state.tokens?.contracts || [])  // Safe default
+  const amm = useSelector(state => state.amm?.contract)              // Optional chaining
 
   const dispatch = useDispatch()
 
   const connectHandler = async () => {
+    if (!amm || tokens.length === 0) {
+      console.warn('Contracts not loaded yet')
+      return
+    }
+
     const account = await loadAccount(dispatch)
     await loadBalances(amm, tokens, account, dispatch)
   }
 
   const networkHandler = async (e) => {
-    await window.ethereum.request({
-      method: 'wallet_switchEthereumChain',
-      params: [{ chainId: e.target.value }],
-    })
+    try {
+      await window.ethereum.request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: e.target.value }],
+      })
+    } catch (err) {
+      console.error(err)
+    }
   }
 
   return (
@@ -43,9 +50,7 @@ const Navigation = () => {
 
       <Navbar.Toggle aria-controls="nav" />
       <Navbar.Collapse id="nav" className="justify-content-end">
-
         <div className="d-flex justify-content-end mt-3">
-
           <Form.Select
             aria-label="Network Selector"
             value={config[chainId] ? `0x${chainId.toString(16)}` : `0`}
@@ -59,7 +64,7 @@ const Navigation = () => {
 
           {account ? (
             <Navbar.Text className='d-flex align-items-center'>
-              {account.slice(0, 5) + '...' + account.slice(38, 42)}
+              {account.slice(0, 5) + '...' + account.slice(-4)}
               <Blockies
                 seed={account}
                 size={10}
@@ -73,13 +78,10 @@ const Navigation = () => {
           ) : (
             <Button onClick={connectHandler}>Connect</Button>
           )}
-
         </div>
-
       </Navbar.Collapse>
     </Navbar>
   );
 }
 
 export default Navigation;
-
