@@ -5,9 +5,6 @@ import { ethers } from 'ethers'
 
 import { options, series } from './Charts.config';
 import { chartSelector } from '../store/reducers/selectors';
-
-
-
 import { useEffect } from 'react'
 
 import Loading from './Loading';
